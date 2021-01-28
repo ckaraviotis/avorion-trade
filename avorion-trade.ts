@@ -1,4 +1,4 @@
-import { getFiles, parseCsv, sprintf, writeCSV, VERSION } from "./deps.ts";
+import { getFiles, parseCsv, sprintf, VERSION, writeCSV } from "./deps.ts";
 
 interface Row {
   buySell: string;
@@ -132,8 +132,9 @@ const main = async () => {
   console.log(`Files processed: ${numFiles}`);
   console.log(`Rows processed: ${numRows}`);
 
-  const buyables = rows.filter((r) => r.buySell.toLowerCase() === "buy");
-  const sellables = rows.filter((r) => r.buySell.toLowerCase() === "sell");
+  // Create separate lists of stations we can buy from and sell to
+  const sellTo = rows.filter((r) => r.buySell.toLowerCase() === "sell");
+  const buyFrom = rows.filter((r) => r.buySell.toLowerCase() === "buy");
 
   // Figure out which items we can actually connect as a trade route
   const prods: any[] = [];
@@ -170,30 +171,26 @@ const main = async () => {
 
   const routes: TradeRoute[] = [];
   routable.forEach(({ item }) => {
-    const bestSalePrice = sellables.filter((s) => s.item === item).reduce((
-      p,
-      c,
-    ) => c.cost < p.cost ? c : p);
-    const bestBuyPrice = buyables.filter((s) => s.item === item).reduce((
-      p,
-      c,
-    ) => c.cost > p.cost ? c : p);
-    const profit = (bestBuyPrice.cost - bestSalePrice.cost) *
-      bestSalePrice.stock;
-    const volume = bestBuyPrice.volume * bestSalePrice.stock;
+    const bestPurchase = buyFrom.filter((s) => s.item === item).reduce((p, c,) => c.cost < p.cost ? c : p);
+    const bestSale = sellTo.filter((s) => s.item === item).reduce((p, c,) => c.cost > p.cost ? c : p);
+    const profit = (bestSale.cost - bestPurchase.cost) * bestPurchase.stock;
+    const volume = bestSale.volume * bestPurchase.stock;
 
     const r: TradeRoute = {
       item,
-      buyFrom: `${bestSalePrice.sector1}, ${bestSalePrice.sector2}`,
-      buyPrice: bestSalePrice.cost,
-      sellTo: `${bestBuyPrice.sector1}, ${bestBuyPrice.sector2}`,
-      sellPrice: bestBuyPrice.cost,
-      units: bestSalePrice.stock,
+      buyFrom: `${bestPurchase.sector1}, ${bestPurchase.sector2}`,
+      buyPrice: bestPurchase.cost,
+      sellTo: `${bestSale.sector1}, ${bestSale.sector2}`,
+      sellPrice: bestSale.cost,
+      units: bestPurchase.stock,
       profit,
       volume,
     };
 
-    routes.push(r);
+    // Only save profitable routes
+    if (r.profit > 0) {
+      routes.push(r);
+    }
   });
 
   routes.sort((a, b) => a.profit < b.profit ? 1 : a.profit > b.profit ? -1 : 0);
